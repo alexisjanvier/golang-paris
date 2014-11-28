@@ -1,0 +1,312 @@
+Où sont mes PR ?
+Du PHP au Go: une semaine pour réaliser un produit fonctionnel
+28 Nov 2014
+Tags: go, php, webservice, microservice, github
+
+Alexis Janvier
+Développeur, Marmelab
+alexis@marmelab.com
+http://www.marmelab.com
+@alexisjanvier
+
+* Le context
+
+- Développeur Php en agence.
+- *Marmelab*, atelier d’innovation digitale.
+.image img/logo.png
+- un projet en une semaine sur une techno inconnue avec une bonne qualité de code  et un *produit* *fonctionnel* à la fin.
+
+* Le projet
+
+Mettre en place un *webservice* mobilisable lors d'un processus *d'intégration* *continue*, permettant de *commenter* les Pull Request (PR) *déployées* sur un environnement spécifique.
+
+Pour le "proof-of-concept", seules les PR Github entrent dans la définition du produit.
+
+* Prise de contact avec le langage: l'environnement de développement
+
+- organisation des répertoires, $GOPATH et `go get`
+- gofmt et godoc
+- GoSublime (pour ceux qui utilisent SublimeText)
+- go run / go build / go install
+- Go Playground
+
+* Prise de contact avec le langage: les boucles ...
+
+.play boucle1.go
+
+* ... et les closures
+
+.play boucle2.go
+
+* Un webservice
+
+Le projet consistait donc à mettre en place un webservice, soit le traitement d'une requète http, et le renvoie d'une réponse.
+
+On trouve très facilement des packages et autres frameworks go pour traiter cette problématique :
+- package *mux* (Gorilla) : http://www.gorillatoolkit.org/pkg/mux
+- *revel* : http://revel.github.io/
+- *martini* et autres *gin-gonic* : http://gin-gonic.github.io/gin/
+- ...
+
+Mais l'une des raisons de choisir go est la richesse de sa *librairie* *standard*, possedant entre autre les outils permettant la mise en place d'un webservice.
+
+* le package net/http
+
+.play simpleService1.go
+
+* gestion des erreurs
+
+    import (
+        "net/http"
+        "fmt"
+        "errors"
+    )
+
+    func processRequest(response http.ResponseWriter, request *http.Request) {
+        defer func() {
+            if panicError := recover(); panicError != nil {
+                errorMsg := fmt.Sprintf("%q", panicError)
+                http.Error(response, errorMsg, 400)
+            }
+        }()
+        if request.Method != "POST" {
+            http.Error(response, "You must send your request in POST.", 405)
+            return
+        }
+        if request.URL.Path != "/golang-paris" {
+            errorMsg := fmt.Sprintf("%s is not a valid url", request.URL.Path)
+            panic(errors.New(errorMsg))
+        }
+        fmt.Fprintf(response, "Hello Golang Paris")
+    }
+
+* Un webservice mobilisable par l'integration continue
+
+via une requete POST comportant dans du json :
+
+- le mainteneur du projet sur github
+- l'identifiant du projet sur github
+- le type de marqueur déployé (tag ou branche)
+- le nom du marqueur
+- la cible du déploiement (dev, preprod, prod, ...)
+
+ {
+     "Owner":"the github username of the project (which must therefore be in config.yml)",
+     "Repo": "the repository name of the project that is deployed (which must also be in config.yml)",
+     "BaseType": "the type of "marker" deployment : branch or tag (Tag doesn't work for the moment!)",
+     "BaseName": "the name of the branch or tag. Ex: master, preprod, v1 ...",
+     "Target": "name of the target (server) on which the code is deployed"
+ }
+
+
+* OO, type struct et package
+
+    package deptools
+
+    import (
+        "encoding/json"
+        "errors"
+        "fmt"
+        "net/http"
+    )
+
+    type RequestAnalyser struct {
+        Owner    string
+        Repo     string
+        BaseType string
+        BaseName string
+        Target   string
+    }
+
+* Utilisation des packages
+
+    package main
+
+    import (
+        "github.com/alexisjanvier/deployedpr/deptools"
+        "fmt"
+        "net/http"
+    )
+
+    func processRequest(response http.ResponseWriter, request *http.Request) {
+        [...]
+        var requestAnalyser deptools.RequestAnalyser
+        owner, repo, baseType, baseName, target, parseError := requestAnalyser.Parse(request)
+        [...]
+    }
+
+* Parser le json
+
+    type RequestAnalyser struct {
+        Owner    string
+        Repo     string
+        BaseType string
+        BaseName string
+        Target   string
+    }
+
+    func (ra *RequestAnalyser) Parse(r *http.Request) (owner string, repo string, basetype string,
+    basename string, target string, analyseError error) {
+        decoder := json.NewDecoder(r.Body)
+        if err := decoder.Decode(&ra); err != nil {
+            return "", "", "", "", "", errors.New("Request as not a valid json format")
+        }
+
+        return ra.Owner,
+            ra.Repo,
+            ra.BaseType,
+            ra.BaseName,
+            ra.Target,
+            nil
+
+    }
+
+* Retour au produit
+
+Nous disposons donc, et ce avec une installation basique de Go :
+
+- d'un webservice fonctionnel capable de recevoir des informations json envoyées en POST
+- d'une application capable de mapper dans une struct les informations de déploiement reçues dans un json (un tag ou une branche d'un projet github données deployé vers une cible données)
+
+Il faut maintenant pour avoir un produit fonctionnel savoir identifier quelles sont les éventuelles PR présentes dans ce code déployé. Et pour cela, nous allons utiliser *l'API* *Github*.
+
+L'Api Github est un webservice Rest très complet. Et la bonne nouvelle, c'est qu'il existe un package Go permettant d'interagir avec elle : *go-github* (https://github.com/google/go-github)
+
+* Le client Github
+
+    go get github.com/google/go-github
+
+.play github1.go
+
+* Stratégie utilisée : 1) lister les PR du projet et identifier leur dernier commit
+
+    GET /repos/:owner/:repo/pulls
+
+    [
+      {
+        "url": "https://api.github.com/repos/octocat/Hello-World/pulls/1",
+        ...
+        "number": 1,
+        "state": "closed",
+        "title": "new-feature",
+        ..
+        "merged_at": "2011-01-26T19:01:12Z",
+        "head": {
+          "label": "new-topic",
+          "ref": "new-topic",
+          "sha": "6dcb09b5b57875f334f61aebed695e2e4193db5e",
+          "user": {
+            ...
+          },
+          "repo": {
+            "id": 1296269,
+
+https://api.github.com/repos/vmg/redcarpet/pulls?state=closed
+
+* avec le client go-github
+
+.play github2.go
+
+* Stratégie utilisée : 2) Tester la présence de ces commits sur le type (branch ou tag) déployé
+
+.play github3.go
+
+* Dernière étape : commenter les PR
+
+Il faut être identifié pour pouvoir commenter via l'API github :
+
+    t := &oauth.Transport{
+      Token: &oauth.Token{AccessToken: "... your access token ..."},
+    }
+    client := github.NewClient(t.Client())
+    msg := fmt.Sprintf("This PR was deployed to %v (from the %v %v)", dpl.Target, dpl.Base_type, dpl.Base_name)
+    comment := &github.IssueComment{Body: &msg}
+    _, _, err := client.Issues.CreateComment("owner", "repo", "issueNumber", comment)
+
+Note : pour Github, une PR est une issue.
+
+* Problème : les commentaires multiples
+
+Si l'on déploie plusieurs fois la même branche sur la même cible, comme le master sur la prod, on va commenter plusieurs fois les mêmes PR !
+
+Pour éviter cela, on va pouvoir :
+
+- lire les commentaires de chaque PR avant de commenter, pour tester si elle est déja commenter pour unes cible donnée
+- faire de la persistance de données du côté de l'application pour savoir quelles sont les PR déja commentées pour quelle cible. Cela va également permettre de limiter l'historique des commits de cible.
+
+* Persistance
+
+On va vouloir sauvegarder :
+
+- les PR de chaque projet, leur date de merge, le dernier commit de la branche mergée et les cibles sur lequelles cette PR a déja été déployé
+- les deploiements realisés par cible, avec le dernier commit de PR et sa date
+
+On ne va pas faire de liaisons entres ces différentes entités (PR et déploiement), on va donc pouvoir facilement utiliser une base de type noSql.
+MongoDb convient bien au projet, et go possède un bon package pour interagire avec : *mgo* (http://labix.org/mgo)
+
+* Le type déploiement
+
+    type Deployment struct {
+        Owner                       string                 `bson:"Owner"`
+        Repository                  string                 `bson:"Repository"`
+        Base_type                   string                 `bson:"base_type"`
+        Base_name                   string                 `bson:"base_name"`
+        Target                      string                 `bson:"Target"`
+        Last_pr_merge_date          time.Time              `bson:"last_pr_merge_date"`
+        base_tag_SHA                string                 `bson:"-"`
+        pull_requests               map[string]PullRequest `bson:"-"`
+        commits_on_deployed_base    map[string]string      `bson:"-"`
+        pull_request_merged_on_base map[string]PullRequest `bson:"-"`
+    }
+
+Le BSON est le format binaire utilisé par MongoDb pour le stockage du JSON.
+De cette manière, le package mgo va pouvoir facilement transformer un type Deployment en objet bson sauvegardable dans MongoDb. Et inversemment, un objet bson requêté depuis MongoDb sera transformé en type Deployment dans le code Go.
+Rapide, simple et efficace.
+
+Tips : si l'on ne veut pas qu'un attribut soit transformé en bson pour être stocké, il suffit d'indiquer bson:"-".
+
+* Sauver un déploiement
+
+    func (dpl *Deployment) save() {
+        sess, err := mgo.Dial("localhost")
+        if err != nil {
+            fmt.Printf("Erreur de connexion a Mongodb : %v", err)
+        }
+        defer sess.Close()
+        sess.SetSafe(&mgo.Safe{})
+
+        collection := sess.DB("deployedPullRequests").C("deployments")
+        err = collection.Insert(dpl)
+        if err != nil {
+            fmt.Printf("Erreur a la sauvegarde du deploiement : %v", err)
+        }
+    }
+
+* Un produit fonctionnel
+
+On a maintenant avec go et deux packages supplémentaires :
+- un webservice mobilisable avec du json en POST
+- un moyen d'identifier sur github les PR pour un deploiement
+- un moyen de commenter
+- de la persistance pour eviter les doublon de commentraire
+
+=> Demo
+
+* Conclusion
+
+Pas de pointer de typage, de slices et autres prises de tête
+- hors typage, et tableau, rapide à prendre en main
+- compilation transparente
+- partabilité génial (pas ici mais sur le principe)
+- outils de bases complet = > go idiomatique classe
+- prêt pour les microservices
+
+* Reference en ligne
+
+Depot slide et projet
+Article sur le blog
+Blog sur les middleware
+
+* De la lecture
+
+Livre sur les middleware
