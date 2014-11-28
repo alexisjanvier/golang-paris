@@ -1,6 +1,6 @@
 package main
 
-// START BASE
+// STARTBASE OMIT
 import (
     "fmt"
     "gopkg.in/mgo.v2"
@@ -13,9 +13,9 @@ type MeetupPing struct {
     When    time.Time   `bson:"When"`
     Secret  string      `bson:"-"`
 }
-// END BASE
+// ENDBASE OMIT
 
-// START SAVE
+// STARTSAVE OMIT
 func (mp *MeetupPing) save() {
     sess, err := mgo.Dial("localhost")
     if err != nil {
@@ -30,9 +30,9 @@ func (mp *MeetupPing) save() {
         fmt.Printf("Erreur a la sauvegarde du ping : %v", err)
     }
 }
-// END SAVE
+// ENDSAVE OMIT
 
-// START GET
+// STARTGET OMIT
 func getLastPingForMeetup(meetupName string) (MeetupPing, error) {
     var lastPing MeetupPing
     sess, err := mgo.Dial("localhost")
@@ -52,9 +52,9 @@ func getLastPingForMeetup(meetupName string) (MeetupPing, error) {
 
     return lastPing, nil
 }
-// END GET
+// ENDGET OMIT
 
-// START MAIN
+// STARTMAIN OMIT
 func main() {
     pingNow := MeetupPing {
         Owner: "golang-paris",
@@ -71,4 +71,4 @@ func main() {
     fmt.Printf("Quand : %v\n", lastPing.When)
     fmt.Printf("Le secret: %v", lastPing.Secret)
 }
-//END MAIN
+//ENDMAIN OMIT

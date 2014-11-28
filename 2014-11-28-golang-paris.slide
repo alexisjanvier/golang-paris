@@ -200,7 +200,7 @@ On ne va pas faire de liaisons entre ces différentes entités (PR et déploieme
 
 * Déclartion du type à sauvegarder
 
-.code storage.go /START BASE/,/END BASE/
+.code storage.go /STARTBASE OMIT/,/ENDBASE OMIT/
 
 Le *BSON* est le format binaire utilisé par MongoDb pour le stockage du JSON.
 De cette manière, le package mgo va pouvoir facilement transformer un type Deployment en objet bson sauvegardable dans MongoDb. Et inversemment, un objet bson requêté depuis MongoDb sera transformé en type Deployment dans le code Go.
@@ -208,15 +208,15 @@ De cette manière, le package mgo va pouvoir facilement transformer un type Depl
 
 * Sauver
 
-.code storage.go /START SAVE/,/END SAVE/
+.code storage.go /STARTSAVE OMIT/,/ENDSAVE OMIT/
 
 * Requêter
 
-.code storage.go /START GET/,/END GET/
+.code storage.go /STARTGET OMIT/,/ENDGET OMIT/
 
 * Test de persistance
 
-.play storage.go /START MAIN/,/END MAIN/
+.play storage.go /STARTMAIN OMIT/,/ENDMAIN OMIT/
 
 * Conclusion
 
